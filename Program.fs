@@ -12,6 +12,8 @@ let cellSize = screenWidth / gridSize
 // Create 2D array to store cell states (false = white, true = black)
 let mutable grid = Array2D.create gridSize gridSize 1
 
+let rng = System.Random()
+let numbers = Array2D.init gridSize gridSize (fun _ _ -> -1) //rng.Next(10, 100))
 
 [<Literal>]
 let StartState = 2
@@ -19,16 +21,13 @@ let StartState = 2
 [<Literal>]
 let FinalState = 3
 
-
 let gridHasStartState() =
     let x = Seq.cast<int> grid
-    
-    Seq.tryFind (fun i ->  i = StartState) x
-    
+    Seq.tryFind (fun i -> i = StartState) x
+
 let asBool (b:CBool) = b <> CBool(false)
 
 let fileName = "grid.pgm"
-
 
 let saveAsPgm  (path: string) (grid: int[,]) =
     let width = Array2D.length2 grid
@@ -38,7 +37,7 @@ let saveAsPgm  (path: string) (grid: int[,]) =
 
     // Write PGM header
     writer.WriteLine("P2")
-    writer.WriteLine($"# Created by F# saveAsPgm")
+    writer.WriteLine("# Created by F# saveAsPgm")
     writer.WriteLine($"{width} {height}")
     writer.WriteLine("3") // Max grayscale value
 
@@ -49,9 +48,6 @@ let saveAsPgm  (path: string) (grid: int[,]) =
         writer.WriteLine()
 
     writer.Flush()
-
-
-open System.IO
 
 let loadPgm (path: string) : int[,] =
     let lines =
@@ -65,7 +61,7 @@ let loadPgm (path: string) : int[,] =
     let width = int sizeLine.[0]
     let height = int sizeLine.[1]
 
-    // Skip: [0] "P2", [1] dimensions, [2] max grayscale (usually 255)
+    // Skip: [0] "P2", [1] dimensions, [2] max grayscale
     let pixelValues =
         lines
         |> Array.skip 3
@@ -85,64 +81,75 @@ let loadPgm (path: string) : int[,] =
 
 
 
+let doStuff() =
+    // Try loading a file
+    try 
+        grid <- loadPgm fileName
+    with 
+        | e -> printfn "Unable to load %A" fileName
 
-// Try loading a file
+    // Initialize Raylib window
+    Raylib.InitWindow(screenWidth, screenHeight, "F# Grid Editor")
+    Raylib.SetTargetFPS(60)
 
-try 
-    grid <- loadPgm fileName
-with 
-    | e -> printfn "Unable to load %A" fileName
+    while not (Raylib.WindowShouldClose()) do
+        // Input handling
+        if Raylib.IsMouseButtonPressed(MouseButton.Left) |> asBool then 
+            let mouseX = Raylib.GetMouseX()
+            let mouseY = Raylib.GetMouseY()
+            let col = mouseX / cellSize
+            let row = mouseY / cellSize
+            if row < gridSize && col < gridSize then
+                grid.[row, col] <- if grid.[row, col] = 0 then 1 else 0 // Toggle cell
+
+        if Raylib.IsKeyPressed(KeyboardKey.S) |> asBool then
+            saveAsPgm fileName grid
+
+        if Raylib.IsMouseButtonPressed(MouseButton.Right) |> asBool then 
+            let mouseX = Raylib.GetMouseX()
+            let mouseY = Raylib.GetMouseY()
+            let col = mouseX / cellSize
+            let row = mouseY / cellSize
+            if row < gridSize && col < gridSize then
+                let g = grid[row,col]
+
+                if gridHasStartState().IsSome then
+                    grid[row, col] <- if g < StartState then FinalState else 0 // Toggle cell
+                else 
+                    grid[row, col] <- if g < StartState then StartState else 0 // Toggle
+
+        // Drawing
+        Raylib.BeginDrawing()
+        Raylib.ClearBackground(Color.White)
+
+        let color = function
+        | 0 -> Color.Black
+        | 1 -> Color.White
+        | StartState -> Color.Red
+        | FinalState -> Color.Green
+        | _ -> Color.Orange
+
+        for row = 0 to gridSize - 1 do
+            for col = 0 to gridSize - 1 do
+                let x = col * cellSize
+                let y = row * cellSize
+                let cellColor = color grid.[row, col] 
+                Raylib.DrawRectangle(x, y, cellSize, cellSize, cellColor)
+                Raylib.DrawRectangleLines(x, y, cellSize, cellSize, Color.LightGray)
+
+                // Draw number
+                let valueText = string numbers.[row, col]
+                let textWidth = Raylib.MeasureText(valueText, 20)
+                let textX = x + (cellSize - textWidth) / 2
+                let textY = y + (cellSize - 20) / 2
+                Raylib.DrawText(valueText, textX, textY, 20, Color.DarkGray)
+
+        Raylib.EndDrawing()
+
+    Raylib.CloseWindow()
 
 
-// Initialize Raylib window
-Raylib.InitWindow(screenWidth, screenHeight, "F# Grid Editor")
-Raylib.SetTargetFPS(60)
+open GridworldMC
 
-while not (Raylib.WindowShouldClose()) do
-    // Input handling
-    if Raylib.IsMouseButtonPressed(MouseButton.Left) |> asBool then 
-        let mouseX = Raylib.GetMouseX()
-        let mouseY = Raylib.GetMouseY()
-        let col = mouseX / cellSize
-        let row = mouseY / cellSize
-        if row < gridSize && col < gridSize then
-            grid.[row, col] <- if grid.[row, col] = 0 then 1 else 0 // Toggle cell
-
-    if Raylib.IsKeyPressed(KeyboardKey.S) |> asBool then
-        saveAsPgm fileName grid
-
-    if Raylib.IsMouseButtonPressed(MouseButton.Right) |> asBool then 
-        let mouseX = Raylib.GetMouseX()
-        let mouseY = Raylib.GetMouseY()
-        let col = mouseX / cellSize
-        let row = mouseY / cellSize
-        if row < gridSize && col < gridSize then
-            let g = grid[row,col]
-
-            if gridHasStartState().IsSome then
-                grid[row, col] <- if g < StartState then FinalState else 0 // Toggle cell
-            else 
-                grid[row, col] <- if g < StartState then StartState else 0 // Toggle
-
-    // Drawing
-    Raylib.BeginDrawing()
-    Raylib.ClearBackground(Color.White)
-
-    let color = function
-    | 0-> Color.Black
-    | 1-> Color.White
-    | StartState -> Color.Red
-    | FinalState -> Color.Green
-    | _ -> Color.Orange
-
-    for row = 0 to gridSize - 1 do
-        for col = 0 to gridSize - 1 do
-            let x = col * cellSize
-            let y = row * cellSize
-            let color = color grid.[row, col] 
-            Raylib.DrawRectangle(x, y, cellSize, cellSize, color)
-            Raylib.DrawRectangleLines(x, y, cellSize, cellSize, Color.LightGray) // Grid lines
-
-    Raylib.EndDrawing()
-
-Raylib.CloseWindow()
+GridworldMC.train 100000
+GridworldMC.runPolicy()
